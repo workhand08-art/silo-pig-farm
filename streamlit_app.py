@@ -17,11 +17,15 @@ def load_data():
 def save_data(data):
     with open(DATA_FILE, "w") as f: json.dump(data, f)
 
-# --- ฟังก์ชันบันทึกไป Google Sheets ---
+# --- ฟังก์ชันบันทึกไป Google Sheets (ฉบับแก้ไขแล้ว) ---
 def save_to_google_sheet(silo, wk, pigs, formula, stock, eat_per_head, actual_eat):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+        
+        # ดึงค่าจาก Secrets แทนการอ่านไฟล์ .json
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        
         client = gspread.authorize(creds)
         sheet = client.open("farm_database").sheet1
         row = [str(datetime.date.today()), silo, wk, pigs, formula, stock, eat_per_head, actual_eat]
@@ -72,7 +76,7 @@ else:
                 save_to_google_sheet(silo, wk, pigs, form, new_stock, eph, ac)
                 st.rerun()
 
-            # --- ส่วนการคำนวณที่หายไป ---
+            # --- ส่วนการคำนวณ ---
             daily_eat_stat = pigs * eph
             days_left = (stock - ac) / daily_eat_stat if daily_eat_stat > 0 else 99
             date_expire = today + datetime.timedelta(days=int(days_left))
