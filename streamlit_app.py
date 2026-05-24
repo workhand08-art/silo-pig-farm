@@ -71,3 +71,17 @@ else:
                 save_data(st.session_state.farm_data)
                 save_to_google_sheet(silo, wk, pigs, form, new_stock, eph, ac)
                 st.rerun()
+
+            # --- ส่วนการคำนวณที่หายไป ---
+            daily_eat_stat = pigs * eph
+            days_left = (stock - ac) / daily_eat_stat if daily_eat_stat > 0 else 99
+            date_expire = today + datetime.timedelta(days=int(days_left))
+            
+            st.write(f"---")
+            st.write(f"📊 **เปรียบเทียบ:** กินตามสแตท {daily_eat_stat:,.1f} กก./วัน | **กินจริงวันนี้ {ac:,.1f} กก.**")
+            st.write(f"📅 **อาหารจะหมดประมาณวันที่:** {date_expire.strftime('%d/%m/%Y')}")
+            
+            if days_left <= 7:
+                st.error(f"🚨 ต้องสั่งเพิ่มอย่างน้อย: {max(0, (daily_eat_stat * 7) - (stock - ac)):,.0f} กก. สำหรับสัปดาห์หน้า")
+            else:
+                st.success(f"✅ อาหารเพียงพอสำหรับอีก {days_left:.1f} วัน")
