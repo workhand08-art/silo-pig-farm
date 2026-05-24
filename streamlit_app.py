@@ -17,7 +17,6 @@ def load_data():
 def save_data(data):
     with open(DATA_FILE, "w") as f: json.dump(data, f)
 
-# --- ฟังก์ชันบันทึกไป Google Sheets ---
 def save_to_google_sheet(silo, wk, pigs, formula, stock, eat_per_head, actual_eat):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -32,24 +31,25 @@ def save_to_google_sheet(silo, wk, pigs, formula, stock, eat_per_head, actual_ea
 # --- หน้าแอป ---
 st.set_page_config(page_title="ระบบบริหารไซโล", layout="wide")
 
-# ระบบรหัสผ่าน
 if "password_correct" not in st.session_state: st.session_state["password_correct"] = False
 
+# ส่วนล็อกอินที่ปรับปรุงแล้ว
 if not st.session_state["password_correct"]:
     st.title("🔒 กรุณาเข้าสู่ระบบ")
-    input_pass = st.text_input("รหัสผ่าน", type="password")
-    if st.button("เข้าสู่ระบบ"):
-        if input_pass == PASSWORD:
+    password_input = st.text_input("รหัสผ่าน", type="password")
+    if st.button("ยืนยันรหัสผ่าน"):
+        if password_input == PASSWORD:
             st.session_state["password_correct"] = True
+            st.success("รหัสถูกต้อง! กำลังเข้าสู่ระบบ...")
             st.rerun()
         else:
-            st.error("รหัสผ่านไม่ถูกต้อง")
+            st.error("รหัสผ่านไม่ถูกต้อง! กรุณาลองใหม่อีกครั้ง")
 else:
+    # --- ระบบหลัก ---
     if 'farm_data' not in st.session_state: st.session_state.farm_data = load_data()
     today = datetime.date.today()
     st.title(f"🐷 ระบบบริหารไซโล (อัปเดต: {today.strftime('%d/%m/%Y')})")
 
-    # บันทึกรถเข้า
     st.sidebar.header("🚚 บันทึกรถอาหารเข้า")
     silo_in = st.sidebar.selectbox("เลือกเล้า", list(st.session_state.farm_data.keys()))
     new_formula_in = st.sidebar.text_input("ชื่อสูตรอาหารที่มาส่ง", st.session_state.farm_data[silo_in]["formula"])
@@ -59,29 +59,10 @@ else:
         save_data(st.session_state.farm_data)
         st.rerun()
 
-    # รายเล้า
     for silo, info in st.session_state.farm_data.items():
         with st.expander(f"เล้า {silo} | สต็อก: {info['stock']:,} กก."):
             c1, c2, c3, c4, c5, c6 = st.columns(6)
             wk = c1.number_input("WK", value=int(info.get('wk', 22)), key=f"wk_{silo}")
             pigs = c2.number_input("ตัว", value=int(info.get('pigs', 600)), key=f"p_{silo}")
             form = c3.text_input("สูตร", value=info.get('formula', 'DG30M'), key=f"f_{silo}")
-            stock = c4.number_input("คงเหลือ", value=int(info['stock']), key=f"s_{silo}")
-            eph = c5.number_input("กิน/ตัว", value=float(info.get('eat_per_head', 2.5)), key=f"eh_{silo}")
-            ac = c6.number_input("กินจริง", value=int(info.get('actual_eat', 1500)), key=f"ac_{silo}")
-            
-            if st.button("บันทึกข้อมูลวันนี้", key=f"b_{silo}"):
-                new_stock = stock - ac
-                st.session_state.farm_data[silo].update({"wk": wk, "pigs": pigs, "formula": form, "stock": new_stock, "eat_per_head": eph, "actual_eat": ac})
-                save_data(st.session_state.farm_data)
-                save_to_google_sheet(silo, wk, pigs, form, new_stock, eph, ac)
-                st.rerun()
-
-            # การคาดการณ์
-            daily_eat_stat = pigs * eph
-            days_left = (stock - ac) / daily_eat_stat if daily_eat_stat > 0 else 99
-            date_expire = today + datetime.timedelta(days=int(days_left))
-            
-            st.write(f"---")
-            st.write(f"📊 **เปรียบเทียบ:** กินตามสแตท {daily_eat_stat:,.1f} กก./วัน | **กินจริงวันนี้ {ac:,.1f} กก.**")
-            st.write(f"📅 **อาหารจะหมดประมาณวันที่:**
+            stock = c4.number_input("คงเหลือ", value=int(info['
