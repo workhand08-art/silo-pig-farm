@@ -32,13 +32,18 @@ def save_to_google_sheet(silo, wk, pigs, formula, stock, eat_per_head, actual_ea
 # --- หน้าแอป ---
 st.set_page_config(page_title="ระบบบริหารไซโล", layout="wide")
 
+# ระบบรหัสผ่าน
 if "password_correct" not in st.session_state: st.session_state["password_correct"] = False
 
 if not st.session_state["password_correct"]:
     st.title("🔒 กรุณาเข้าสู่ระบบ")
-    if st.text_input("รหัสผ่าน", type="password") == PASSWORD:
-        st.session_state["password_correct"] = True
-        st.rerun()
+    input_pass = st.text_input("รหัสผ่าน", type="password")
+    if st.button("เข้าสู่ระบบ"):
+        if input_pass == PASSWORD:
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else:
+            st.error("รหัสผ่านไม่ถูกต้อง")
 else:
     if 'farm_data' not in st.session_state: st.session_state.farm_data = load_data()
     today = datetime.date.today()
@@ -72,16 +77,11 @@ else:
                 save_to_google_sheet(silo, wk, pigs, form, new_stock, eph, ac)
                 st.rerun()
 
-            # --- ส่วนการคำนวณที่หายไป ---
+            # การคาดการณ์
             daily_eat_stat = pigs * eph
             days_left = (stock - ac) / daily_eat_stat if daily_eat_stat > 0 else 99
             date_expire = today + datetime.timedelta(days=int(days_left))
             
             st.write(f"---")
             st.write(f"📊 **เปรียบเทียบ:** กินตามสแตท {daily_eat_stat:,.1f} กก./วัน | **กินจริงวันนี้ {ac:,.1f} กก.**")
-            st.write(f"📅 **อาหารจะหมดประมาณวันที่:** {date_expire.strftime('%d/%m/%Y')}")
-            
-            if days_left <= 7:
-                st.error(f"🚨 ต้องสั่งเพิ่มอย่างน้อย: {max(0, (daily_eat_stat * 7) - (stock - ac)):,.0f} กก. สำหรับสัปดาห์หน้า")
-            else:
-                st.success(f"✅ อาหารเพียงพอสำหรับอีก {days_left:.1f} วัน")
+            st.write(f"📅 **อาหารจะหมดประมาณวันที่:**
