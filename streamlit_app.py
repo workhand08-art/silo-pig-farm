@@ -26,14 +26,11 @@ def save_data(data):
 def save_to_google_sheet(silo, wk, pigs, formula, stock, eat_per_head, actual_eat):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        
-        # ดึงค่าจาก Secrets (ต้องตั้งค่าใน Streamlit Cloud > Settings > Secrets)
         creds_dict = dict(st.secrets["gcp_service_account"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        
         client = gspread.authorize(creds)
-        # เปิดไฟล์ farm_database ต้องมั่นใจว่าแชร์ให้เมล service account แล้ว
         sheet = client.open("farm_database").sheet1
+        # บันทึกรูปแบบ: [วันที่, เล้า, สัปดาห์, จำนวนหมู, สูตรอาหาร, สต็อกคงเหลือ, กินต่อตัว, กินจริง]
         row = [str(datetime.date.today()), silo, wk, pigs, formula, stock, eat_per_head, actual_eat]
         sheet.append_row(row)
         return True
@@ -66,11 +63,14 @@ else:
     add_kg = st.sidebar.number_input("จำนวนที่เติม (กก.)", value=1000, step=500)
     
     if st.sidebar.button("📦 บันทึกรถเข้า"):
-        st.session_state.farm_data[silo_in].update({
-            "stock": st.session_state.farm_data[silo_in]["stock"] + add_kg, 
-            "formula": new_formula_in
-        })
+        info = st.session_state.farm_data[silo_in]
+        new_stock = info["stock"] + add_kg
+        st.session_state.farm_data[silo_in].update({"stock": new_stock, "formula": new_formula_in})
         save_data(st.session_state.farm_data)
+        
+        # บันทึกลง Sheet (ค่ากินจริงคือ 0 เพราะเป็นการเติมอาหาร)
+        if save_to_google_sheet(silo_in, info["wk"], info["pigs"], new_formula_in, new_stock, info["eat_per_head"], 0):
+            st.success("บันทึกรถเข้าและส่งข้อมูลเข้า Sheet เรียบร้อย!")
         st.rerun()
 
     # รายเล้า
