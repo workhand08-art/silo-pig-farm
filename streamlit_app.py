@@ -11,32 +11,41 @@ DATA_FILE = "farm_data.json"
 
 def load_data():
     if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f: return json.load(f)
+        try:
+            with open(DATA_FILE, "r") as f: 
+                return json.load(f)
+        except:
+            pass
     return {str(i): {"wk": 22, "pigs": 600, "stock": 5000, "formula": "DG30M", "eat_per_head": 2.5, "actual_eat": 1500} for i in range(1, 21)}
 
 def save_data(data):
-    with open(DATA_FILE, "w") as f: json.dump(data, f)
+    with open(DATA_FILE, "w") as f: 
+        json.dump(data, f)
 
-# --- ฟังก์ชันบันทึกไป Google Sheets (ฉบับแก้ไขแล้ว) ---
+# --- ฟังก์ชันบันทึกไป Google Sheets ---
 def save_to_google_sheet(silo, wk, pigs, formula, stock, eat_per_head, actual_eat):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # ดึงค่าจาก Secrets แทนการอ่านไฟล์ .json
+        # ดึงค่าจาก Secrets (ต้องตั้งค่าใน Streamlit Cloud > Settings > Secrets)
         creds_dict = dict(st.secrets["gcp_service_account"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         
         client = gspread.authorize(creds)
+        # เปิดไฟล์ farm_database ต้องมั่นใจว่าแชร์ให้เมล service account แล้ว
         sheet = client.open("farm_database").sheet1
         row = [str(datetime.date.today()), silo, wk, pigs, formula, stock, eat_per_head, actual_eat]
         sheet.append_row(row)
+        return True
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการบันทึก Google Sheet: {e}")
+        return False
 
 # --- หน้าแอป ---
 st.set_page_config(page_title="ระบบบริหารไซโล", layout="wide")
 
-if "password_correct" not in st.session_state: st.session_state["password_correct"] = False
+if "password_correct" not in st.session_state: 
+    st.session_state["password_correct"] = False
 
 if not st.session_state["password_correct"]:
     st.title("🔒 กรุณาเข้าสู่ระบบ")
@@ -44,7 +53,9 @@ if not st.session_state["password_correct"]:
         st.session_state["password_correct"] = True
         st.rerun()
 else:
-    if 'farm_data' not in st.session_state: st.session_state.farm_data = load_data()
+    if 'farm_data' not in st.session_state: 
+        st.session_state.farm_data = load_data()
+    
     today = datetime.date.today()
     st.title(f"🐷 ระบบบริหารไซโล (อัปเดต: {today.strftime('%d/%m/%Y')})")
 
@@ -53,8 +64,12 @@ else:
     silo_in = st.sidebar.selectbox("เลือกเล้า", list(st.session_state.farm_data.keys()))
     new_formula_in = st.sidebar.text_input("ชื่อสูตรอาหารที่มาส่ง", st.session_state.farm_data[silo_in]["formula"])
     add_kg = st.sidebar.number_input("จำนวนที่เติม (กก.)", value=1000, step=500)
+    
     if st.sidebar.button("📦 บันทึกรถเข้า"):
-        st.session_state.farm_data[silo_in].update({"stock": st.session_state.farm_data[silo_in]["stock"] + add_kg, "formula": new_formula_in})
+        st.session_state.farm_data[silo_in].update({
+            "stock": st.session_state.farm_data[silo_in]["stock"] + add_kg, 
+            "formula": new_formula_in
+        })
         save_data(st.session_state.farm_data)
         st.rerun()
 
@@ -71,12 +86,16 @@ else:
             
             if st.button("บันทึกข้อมูลวันนี้", key=f"b_{silo}"):
                 new_stock = stock - ac
-                st.session_state.farm_data[silo].update({"wk": wk, "pigs": pigs, "formula": form, "stock": new_stock, "eat_per_head": eph, "actual_eat": ac})
+                st.session_state.farm_data[silo].update({
+                    "wk": wk, "pigs": pigs, "formula": form, 
+                    "stock": new_stock, "eat_per_head": eph, "actual_eat": ac
+                })
                 save_data(st.session_state.farm_data)
-                save_to_google_sheet(silo, wk, pigs, form, new_stock, eph, ac)
+                if save_to_google_sheet(silo, wk, pigs, form, new_stock, eph, ac):
+                    st.success("บันทึกข้อมูลสำเร็จ!")
                 st.rerun()
 
-            # --- ส่วนการคำนวณ ---
+            # --- คำนวณ ---
             daily_eat_stat = pigs * eph
             days_left = (stock - ac) / daily_eat_stat if daily_eat_stat > 0 else 99
             date_expire = today + datetime.timedelta(days=int(days_left))
