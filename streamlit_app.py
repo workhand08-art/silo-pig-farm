@@ -30,7 +30,6 @@ def save_to_google_sheet(silo, wk, pigs, formula, stock, eat_per_head, actual_ea
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         sheet = client.open("farm_database").sheet1
-        # บันทึกรูปแบบ: [วันที่, เล้า, สัปดาห์, จำนวนหมู, สูตรอาหาร, สต็อกคงเหลือ, กินต่อตัว, กินจริง]
         row = [str(datetime.date.today()), silo, wk, pigs, formula, stock, eat_per_head, actual_eat]
         sheet.append_row(row)
         return True
@@ -68,43 +67,46 @@ else:
         st.session_state.farm_data[silo_in].update({"stock": new_stock, "formula": new_formula_in})
         save_data(st.session_state.farm_data)
         
-        # บันทึกลง Sheet (ค่ากินจริงคือ 0 เพราะเป็นการเติมอาหาร)
         if save_to_google_sheet(silo_in, info["wk"], info["pigs"], new_formula_in, new_stock, info["eat_per_head"], 0):
             st.success("บันทึกรถเข้าและส่งข้อมูลเข้า Sheet เรียบร้อย!")
         st.rerun()
 
     # รายเล้า
     for silo, info in st.session_state.farm_data.items():
-        with st.expander(f"เล้า {silo} | สต็อก: {info['stock']:,} กก."):
+        with st.expander(f"เล้า {silo} | สต็อกปัจจุบัน: {info['stock']:,} กก."):
             c1, c2, c3, c4, c5, c6 = st.columns(6)
             wk = c1.number_input("WK", value=int(info.get('wk', 22)), key=f"wk_{silo}")
             pigs = c2.number_input("ตัว", value=int(info.get('pigs', 600)), key=f"p_{silo}")
             form = c3.text_input("สูตร", value=info.get('formula', 'DG30M'), key=f"f_{silo}")
-            stock = c4.number_input("คงเหลือ", value=int(info['stock']), key=f"s_{silo}")
+            stock = c4.number_input("คงเหลือ (จดจริง)", value=int(info['stock']), key=f"s_{silo}")
             eph = c5.number_input("กิน/ตัว", value=float(info.get('eat_per_head', 2.5)), key=f"eh_{silo}")
             ac = c6.number_input("กินจริง", value=int(info.get('actual_eat', 1500)), key=f"ac_{silo}")
             
             if st.button("บันทึกข้อมูลวันนี้", key=f"b_{silo}"):
-                new_stock = stock - ac
                 st.session_state.farm_data[silo].update({
                     "wk": wk, "pigs": pigs, "formula": form, 
-                    "stock": new_stock, "eat_per_head": eph, "actual_eat": ac
+                    "stock": stock, "eat_per_head": eph, "actual_eat": ac
                 })
                 save_data(st.session_state.farm_data)
-                if save_to_google_sheet(silo, wk, pigs, form, new_stock, eph, ac):
+                
+                if save_to_google_sheet(silo, wk, pigs, form, stock, eph, ac):
                     st.success("บันทึกข้อมูลสำเร็จ!")
                 st.rerun()
 
-            # --- คำนวณ ---
+            # --- คำนวณแบบถ่วงน้ำหนัก (Weighted Average) ---
             daily_eat_stat = pigs * eph
-            days_left = (stock - ac) / daily_eat_stat if daily_eat_stat > 0 else 99
+            # ถ่วงน้ำหนัก: 40% เชื่อมาตรฐาน, 60% เชื่อการกินจริงวันนี้
+            effective_eat = (daily_eat_stat * 0.4) + (ac * 0.6)
+            
+            days_left = (stock / effective_eat) if effective_eat > 0 else 99
             date_expire = today + datetime.timedelta(days=int(days_left))
             
             st.write(f"---")
             st.write(f"📊 **เปรียบเทียบ:** กินตามสแตท {daily_eat_stat:,.1f} กก./วัน | **กินจริงวันนี้ {ac:,.1f} กก.**")
+            st.write(f"📈 **อัตราการใช้จริง (เฉลี่ย):** {effective_eat:,.1f} กก./วัน")
             st.write(f"📅 **อาหารจะหมดประมาณวันที่:** {date_expire.strftime('%d/%m/%Y')}")
             
             if days_left <= 7:
-                st.error(f"🚨 ต้องสั่งเพิ่มอย่างน้อย: {max(0, (daily_eat_stat * 7) - (stock - ac)):,.0f} กก. สำหรับสัปดาห์หน้า")
+                st.error(f"🚨 ต้องสั่งเพิ่มอย่างน้อย: {max(0, (effective_eat * 7) - stock):,.0f} กก. สำหรับสัปดาห์หน้า")
             else:
                 st.success(f"✅ อาหารเพียงพอสำหรับอีก {days_left:.1f} วัน")
